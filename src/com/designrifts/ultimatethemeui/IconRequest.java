@@ -59,8 +59,11 @@ public class IconRequest extends Activity {
 	private static final String TAG = "Pkg";
 	private static final String SD = Environment.getExternalStorageDirectory().getAbsolutePath();
 	private static final String SAVE_LOC = SD + "/designriftsrequest";
-	private static final int BUFFER = 2048;
+	private static final String ICON_LOC = SAVE_LOC + "/icons";
+	private static final int BUFFER = 4096;
 	private ProgressDialog pbarDialog;
+	
+	private Thread mThread;
 
 	/** Called when the activity is first created. */
 	@Override
@@ -79,7 +82,7 @@ public class IconRequest extends Activity {
 				pbarDialog = ProgressDialog.show(IconRequest.this,
 						"Please wait...", "Gathering application info...", true);
 
-				Thread designriftsThread = new Thread()
+				mThread = new Thread()
 				{
 					@Override
 					public void run()
@@ -87,10 +90,14 @@ public class IconRequest extends Activity {
 						Looper.prepare();
 
 						final File save_loc = new File(SAVE_LOC);
+						final File icon_loc = new File(ICON_LOC);
 						save_loc.mkdirs();
+						icon_loc.mkdirs();
 
 						final PackageManager packageManager = getPackageManager();
-						final StringBuilder sb = new StringBuilder( );
+						final StringBuilder appFilterBuilder = new StringBuilder( );
+						final StringBuilder drawableBuilder = new StringBuilder( );
+						final StringBuilder arrayBuilder = new StringBuilder( );
 						final Intent intent = new Intent("android.intent.action.MAIN");
 						intent.addCategory("android.intent.category.LAUNCHER");
 						final List<ResolveInfo> activities = packageManager.queryIntentActivities( intent, 0 );
@@ -106,16 +113,25 @@ public class IconRequest extends Activity {
 							final Drawable icon = info.loadIcon(packageManager);
 							final String pkgName = info.activityInfo.packageName;
 							final String className = info.activityInfo.name;
+							final String imageName = label.toLowerCase().replace(" ", "");
 
-							sb.append("<!-- " + label + " -->\n<!-- " + pkgName + " -->\n<item component=\""+pkgName+"/"+className+"\" drawable=\""+label.replace(" ", "")+"\" />");
-							sb.append("\n");
-							sb.append("\n");
+							appFilterBuilder.append("<!-- "+label+" -->\n<!-- "+pkgName+" -->\n<item component=\"ComponentInfo{"+pkgName+"/"+className+"}\" drawable=\""+imageName+"\" />");
+							appFilterBuilder.append("\n");
+							appFilterBuilder.append("\n");
+							
+							drawableBuilder.append("<!-- "+label+" -->\n<!-- "+pkgName+" -->\n<item drawable=\""+imageName+"\" />");
+							drawableBuilder.append("\n");
+							drawableBuilder.append("\n");
+							
+							arrayBuilder.append("<!-- "+label+" -->\n<!-- "+pkgName+" -->\n<item>"+imageName+"</item>");
+							arrayBuilder.append("\n");
+							arrayBuilder.append("\n");
 
 							Bitmap bitmap = ((BitmapDrawable)icon).getBitmap();
 							FileOutputStream fOut;
 
 							try {
-								fOut = new FileOutputStream(SAVE_LOC + "/" + pkgName + ".png");
+								fOut = new FileOutputStream(ICON_LOC + "/"+ imageName + ".png");
 								bitmap.compress(Bitmap.CompressFormat.PNG,100,fOut);
 								fOut.flush();fOut.close();
 							} catch (FileNotFoundException e) {	} 
@@ -123,19 +139,31 @@ public class IconRequest extends Activity {
 						}
 
 						try {
-							FileWriter fstream = new FileWriter(SAVE_LOC + "/appfilter.xml");
-							BufferedWriter out = new BufferedWriter(fstream);
-							out.write(sb.toString());
+							FileWriter fstream;
+							BufferedWriter out;
+							
+							fstream = new FileWriter(SAVE_LOC + "/appfilter.xml");
+							out = new BufferedWriter(fstream);
+							out.write(appFilterBuilder.toString());
 							out.close();
+							
+							fstream = new FileWriter(SAVE_LOC + "/drawable.xml");
+							out = new BufferedWriter(fstream);
+							out.write(drawableBuilder.toString());
+							out.close();
+							
+							fstream = new FileWriter(SAVE_LOC + "/icon_pack.xml");
+							out = new BufferedWriter(fstream);
+							out.write(arrayBuilder.toString());
+							out.close();
+														
 						} catch (Exception e){}
 
 						createZipFile(SAVE_LOC, true, SD + "/" + android.os.Build.MODEL + ".zip");
-						// deleteDirectory(save_loc);
-						
 						handler.sendEmptyMessage(0);
 					}
 				};
-				designriftsThread.start();				
+				mThread.start();				
 			}
 
 		});
@@ -159,6 +187,10 @@ public class IconRequest extends Activity {
 				sendIntent.putExtra(android.content.Intent.EXTRA_TEXT, (getString(R.string.email_text)));
 				sendIntent.putExtra(android.content.Intent.EXTRA_EMAIL, new String[]{getString(R.string.request_email_addr)});
 				startActivity(Intent.createChooser(sendIntent, getString(R.string.send_email)));
+				
+				if(!mThread.isAlive()){
+					deleteDirectory(new File(SAVE_LOC));
+				}
 				
 				break;
 			}
@@ -305,6 +337,4 @@ public class IconRequest extends Activity {
 				zip_folder(new File(file.getPath() +"/"+ list[i]), zout);
 		}
 	}
-
-
 }
